@@ -16,28 +16,26 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to Container Registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for Docker
+      - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=
             type=raw,value=latest
+            type=sha,prefix=
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -49,21 +47,23 @@ jobs:
 
   deploy:
     needs: build-and-push
-    runs-on: [self-hosted, hittoverse-runner]
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: read
 
     steps:
-      - name: Pull and restart container
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker stop contact-server || true
-          docker rm contact-server || true
-          docker run -d \
-            --name contact-server \
-            --restart unless-stopped \
-            -p 1337:1337 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      - name: Checkout (for compose.yaml)
+        uses: actions/checkout@v4
 
-      - name: Verify deployment
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull latest image and restart
         run: |
-          sleep 3
-          docker ps | grep contact-server && echo "✅ Container is running"
+          docker compose pull
+          docker compose up -d
+
+      - name: Cleanup old images
+        run: |
+          docker image prune -f

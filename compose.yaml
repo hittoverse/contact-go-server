@@ -1,0 +1,7 @@
+services:
+  contact-server:
+    image: ghcr.io/hittoverse/contact-go-server:latest
+    container_name: contact-server
+    restart: unless-stopped
+    ports:
+      - "1337:1337"
